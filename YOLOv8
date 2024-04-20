@@ -1,0 +1,59 @@
+# ECE 579 Final Project
+# Team members: Fazal Mohammed, George Hauck, Julia Korde
+
+# Python code for YOLOv8 model from Roboflow API, runs in Google Colab
+
+# Check access to GPU
+!nvidia-smi
+
+import os
+HOME = os.getcwd()
+print(HOME)
+
+# Install library for YOLOv8
+!pip install ultralytics==8.0.196
+from IPython import display
+display.clear_output()
+import ultralytics
+ultralytics.checks()
+from ultralytics import YOLO
+from IPython.display import display, Image
+
+# Download annotated dataset from Roboflow
+!mkdir {HOME}/datasets
+%cd {HOME}/datasets
+!pip install roboflow --quiet
+from roboflow import Roboflow
+rf = Roboflow(api_key="REMOVED") # API removed
+project = rf.workspace("579").project("final-project-debris-detection")
+version = project.version(1)
+dataset = version.download("yolov8")
+
+# Start Training for 25 epochs, create plots and images
+%cd {HOME}
+!yolo task=detect mode=train model=yolov8s.pt data={dataset.location}/data.yaml epochs=25 imgsz=800 plots=True
+!ls {HOME}/runs/detect/train/
+# Display Confusion Matrix
+%cd {HOME}
+Image(filename=f'{HOME}/runs/detect/train/confusion_matrix.png', width=600)
+
+# Display Training Loss, Recall, and Precision Plots
+%cd {HOME}
+Image(filename=f'{HOME}/runs/detect/train/results.png', width=600)
+
+# View some predictions of bounding boxes on Validation images
+%cd {HOME}
+Image(filename=f'{HOME}/runs/detect/train/val_batch0_pred.jpg', width=600)
+
+# Create YAML file with weights
+%cd {HOME}
+!yolo task=detect mode=val model={HOME}/runs/detect/train/weights/best.pt data={dataset.location}/data.yaml
+
+# Check with test images and create predictions of bounding boxes
+%cd {HOME}
+!yolo task=detect mode=predict model={HOME}/runs/detect/train/weights/best.pt conf=0.25 source={dataset.location}/test/images save=True
+
+
+
+
+
