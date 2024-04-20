@@ -1,0 +1,189 @@
+# ECE 579 W24
+# Python code for experiment with 3-fold for Google Colab/Drive
+
+# Import libraries
+import os
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
+from tensorflow.keras.utils import Sequence
+from PIL import Image
+
+# Provide access to Google Drive for files
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Set up Hyperparameters and CNN class
+Num_of_Epochs = 10 # try 10, 15 and 5
+Activation_Func = 'relu' # try 'sigmoid', 'Relu' and 'hard_sigmoid'
+Batch_Size = 32 # try 16, 32 and 8
+Learning_Rate = 0.001 # try 0.001, 0.01 and 0.0001
+Momentum = 0 # try 0, 1, 10
+Optimizer = 'SGD' # try 'SGD', 'adam' and 'rmsprop'
+
+# Define the class names and the number of classes
+class_names = ['road', 'debris']
+num_classes = len(class_names)
+
+
+# Data generator class
+class DataGenerator(Sequence):
+    def __init__(self, base_path, dataset, class_names, batch_size=8, dim=(320, 320), n_channels=3, shuffle=True):
+        'Initialization'
+        self.dim = dim
+        self.batch_size = batch_size
+        self.dataset = dataset
+        self.base_path = base_path
+        self.n_channels = n_channels
+        self.class_names = class_names
+        self.n_classes = len(class_names)
+        self.shuffle = shuffle
+        self.annotations_path = os.path.join(base_path, dataset, '_annotations.csv')
+        self.df = pd.read_csv(self.annotations_path)
+        self.indexes = np.arange(len(self.df))
+        self.on_epoch_end()
+
+    def __len__(self):
+        'Denotes the number of batches per epoch'
+        return int(np.floor(len(self.df) / self.batch_size))
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
+        return self.__data_generation(indexes)
+
+    def on_epoch_end(self):
+        'Updates indexes after each epoch'
+        if self.shuffle:
+            np.random.shuffle(self.indexes)
+
+    def __data_generation(self, indexes):
+        'Generates data containing batch_size samples'
+        X = np.empty((self.batch_size, *self.dim, self.n_channels))
+        y = np.empty((self.batch_size, 4 + self.n_classes), dtype=np.float32)  # Modify according to output structure
+
+        for i, idx in enumerate(indexes):
+            row = self.df.iloc[idx]
+            image_path = os.path.join(self.base_path, self.dataset, row['filename'])
+            image = Image.open(image_path)
+            image = image.resize(self.dim)
+            X[i, ] = np.array(image) / 255.0
+
+            bboxes = [row['xmin'], row['ymin'], row['xmax'], row['ymax']]
+            classes = pd.get_dummies(row['class'], dtype=np.float32).reindex(columns=self.class_names, fill_value=0).to_numpy()
+            y[i, ] = np.hstack([bboxes, classes.flatten()])
+
+        return X, y
+
+def Net(num_classes, Activation_Function=Activation_Func):
+    model = Sequential([
+        # First convolutional layer
+        Conv2D(256, (3, 3), activation=Activation_Function, input_shape=(320, 320, 3)),
+        MaxPooling2D(2, 2),
+
+        # Second convolutional layer
+        Conv2D(128, (3, 3), activation=Activation_Function),
+        MaxPooling2D(2, 2),
+
+        # Third convolutional layer
+        Conv2D(64, (3, 3), activation=Activation_Function),
+        MaxPooling2D(2, 2),
+
+        # Fourth convolutional layer
+        Conv2D(32, (3, 3), activation=Activation_Function),
+        MaxPooling2D(2, 2),
+
+        # Fifth convolutional layer
+        Conv2D(16, (3, 3), activation=Activation_Function),
+        MaxPooling2D(2, 2),
+
+        # Flatten the results to feed into a dense layer
+        Flatten(),
+
+        # Dense layer for interpretation and classification
+        Dense(128, activation=Activation_Function),
+        Dropout(0.5),
+        # Output layer adjusted according to the number of classes
+        Dense(4 + num_classes, activation='Softmax')  # Use softmax for multi-class classification
+    ])
+    return model
+
+# Fold 1
+base_path = '/content/drive/Dataset1' # path edited
+model1 = Net(num_classes)
+model1.compile(optimizer=Optimizer, loss='mse', metrics=['accuracy'])
+
+checkpoint_path = "Model_Checkpoints/model_epoch_{epoch:02d}"
+checkpoint = ModelCheckpoint(filepath=checkpoint_path, save_best_only=True, monitor='val_loss', mode='min', verbose=1, save_format='tf')
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
+tensorboard = TensorBoard(log_dir="Logs", histogram_freq=1)
+
+
+train_generator = DataGenerator(base_path, 'train', class_names, batch_size=Batch_Size)
+test_generator = DataGenerator(base_path, 'test', class_names, batch_size=Batch_Size)
+
+# Train the model
+history = model1.fit(
+    train_generator,
+    epochs=Num_of_Epochs,
+    callbacks=[checkpoint, early_stopping, tensorboard],
+    verbose=1
+)
+
+test_loss, test_accuracy = model1.evaluate(test_generator)
+print(f"Test Loss: {test_loss}, Test Accuracy: {test_accuracy}")
+
+
+
+# Fold 2
+base_path = '/content/drive/Dataset2' # path edited
+model1 = Net(num_classes)
+model1.compile(optimizer=Optimizer, loss='mse', metrics=['accuracy'])
+
+checkpoint_path = "Model_Checkpoints/model_epoch_{epoch:02d}"
+checkpoint = ModelCheckpoint(filepath=checkpoint_path, save_best_only=True, monitor='val_loss', mode='min', verbose=1, save_format='tf')
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
+tensorboard = TensorBoard(log_dir="Logs", histogram_freq=1)
+
+
+train_generator = DataGenerator(base_path, 'train', class_names, batch_size=Batch_Size)
+test_generator = DataGenerator(base_path, 'test', class_names, batch_size=Batch_Size)
+
+# Train the model
+history = model1.fit(
+    train_generator,
+    epochs=Num_of_Epochs,
+    callbacks=[checkpoint, early_stopping, tensorboard],
+    verbose=1
+)
+
+test_loss, test_accuracy = model1.evaluate(test_generator)
+print(f"Test Loss: {test_loss}, Test Accuracy: {test_accuracy}")
+
+# Fold 3
+base_path = '/content/drive/Dataset3' # path edited
+model1 = Net(num_classes)
+model1.compile(optimizer=Optimizer, loss='mse', metrics=['accuracy'])
+
+checkpoint_path = "Model_Checkpoints/model_epoch_{epoch:02d}"
+checkpoint = ModelCheckpoint(filepath=checkpoint_path, save_best_only=True, monitor='val_loss', mode='min', verbose=1, save_format='tf')
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
+tensorboard = TensorBoard(log_dir="Logs", histogram_freq=1)
+
+
+train_generator = DataGenerator(base_path, 'train', class_names, batch_size=Batch_Size)
+test_generator = DataGenerator(base_path, 'test', class_names, batch_size=Batch_Size)
+
+# Train the model
+history = model1.fit(
+    train_generator,
+    epochs=Num_of_Epochs,
+    callbacks=[checkpoint, early_stopping, tensorboard],
+    verbose=1
+)
+
+test_loss, test_accuracy = model1.evaluate(test_generator)
+print(f"Test Loss: {test_loss}, Test Accuracy: {test_accuracy}")
